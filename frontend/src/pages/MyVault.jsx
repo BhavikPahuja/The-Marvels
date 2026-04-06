@@ -39,6 +39,13 @@ function formatRelativeTime(timestamp) {
   return `${days}d ago`
 }
 
+function activateOnKey(event, action) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    action()
+  }
+}
+
 export default function MyVault() {
   const navigate = useNavigate()
   const masterPassword = getMasterKey()
@@ -293,6 +300,10 @@ export default function MyVault() {
           <div
             className="card vault__add-card"
             onClick={() => navigate('/vault/add')}
+            onKeyDown={(event) => activateOnKey(event, () => navigate('/vault/add'))}
+            role="button"
+            tabIndex={0}
+            aria-label="Add a new vault item"
             style={{ cursor: 'pointer' }}
             id="btn-add-item"
           >
@@ -346,6 +357,10 @@ export default function MyVault() {
                 className="card card--zero-knowledge vault__item"
                 style={{ animationDelay: `${i * 80}ms` }}
                 onClick={() => navigate(`/vault/${item.id}`)}
+                onKeyDown={(event) => activateOnKey(event, () => navigate(`/vault/${item.id}`))}
+                role="button"
+                tabIndex={0}
+                aria-label={`Open credential ${item.label}`}
               >
                 <div className="vault__item-header">
                   <div className="vault__item-icon">
