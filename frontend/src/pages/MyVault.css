@@ -112,6 +112,54 @@
   font-size: 0.78rem;
 }
 
+.vault__notif-item--alert {
+  align-items: flex-start;
+  cursor: default;
+}
+
+.vault__notif-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vault__notif-alert-badge {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+}
+
+.vault__notif-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.vault__notif-mark-read {
+  border: 1px solid rgba(132, 150, 126, 0.4);
+  background: rgba(31, 31, 31, 0.75);
+  color: var(--on-surface-variant);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 5px 8px;
+  transition:
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.vault__notif-mark-read:hover {
+  border-color: rgba(0, 255, 65, 0.45);
+  color: var(--primary-container);
+  background: rgba(0, 255, 65, 0.06);
+  transform: translateY(-1px);
+}
+
 .vault__notif-time {
   font-size: 0.72rem;
   white-space: nowrap;
@@ -131,6 +179,138 @@
 
 .vault__summary > .card:nth-child(2) {
   animation: fadeIn 420ms var(--motion-emphasis) 90ms both;
+}
+
+.vault__intel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.vault__intel-card {
+  background: var(--surface-container);
+  border: var(--ghost-border);
+  animation: riseIn 360ms var(--motion-emphasis) both;
+}
+
+.vault__intel-card--snapshot {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 255, 65, 0.04) 0%,
+    var(--surface-container) 38%
+  );
+  border-color: rgba(0, 255, 65, 0.2);
+}
+
+.vault__snapshot-badge {
+  box-shadow: 0 0 0 1px rgba(0, 255, 65, 0.08) inset;
+}
+
+.vault__intel-card--span {
+  grid-column: 1 / -1;
+}
+
+.vault__intel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.vault__intel-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.vault__intel-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  background: #2f2f2f;
+  border: var(--ghost-border);
+  padding: 12px;
+}
+
+.vault__intel-metric strong {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.vault__intel-metric .text-muted {
+  font-size: 0.75rem;
+}
+
+.vault__intel-empty {
+  margin-top: var(--space-md);
+  font-size: 0.8rem;
+}
+
+.vault__category-list {
+  margin-top: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vault__category-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.vault__category-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 110px;
+  font-size: 0.82rem;
+}
+
+.vault__category-metrics {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.vault__category-track {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.vault__category-fill {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(132, 150, 126, 0.35),
+    rgba(0, 255, 65, 0.55)
+  );
+}
+
+.vault__action-list {
+  margin-top: var(--space-md);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vault__action-list li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 0.8rem;
+  color: var(--on-surface-variant);
 }
 
 .vault__health-card {
@@ -331,9 +511,38 @@
     grid-template-columns: 1fr;
   }
 
+  .vault__intel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vault__intel-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .vault__intel-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vault__category-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .vault__category-metrics {
+    width: 100%;
+  }
+
   .vault__notif-item {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .vault__notif-actions {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
   }
 
   .vault__notif-time {
@@ -341,6 +550,12 @@
   }
 
   .vault__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .vault__intel-metrics {
     grid-template-columns: 1fr;
   }
 }

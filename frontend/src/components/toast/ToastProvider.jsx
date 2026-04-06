@@ -13,7 +13,10 @@ const ToastContext = createContext(null);
 const MAX_TOASTS = 6;
 
 function createToastId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   return `toast_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -83,7 +86,12 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="toast-layer" role="region" aria-label="Notifications" aria-live="polite">
+      <div
+        className="toast-layer"
+        role="region"
+        aria-label="Notifications"
+        aria-live="polite"
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}
@@ -101,7 +109,9 @@ export function ToastProvider({ children }) {
                 <span className="icon icon-sm">close</span>
               </button>
             </div>
-            {toast.message ? <p className="toast__message">{toast.message}</p> : null}
+            {toast.message ? (
+              <p className="toast__message">{toast.message}</p>
+            ) : null}
           </div>
         ))}
       </div>

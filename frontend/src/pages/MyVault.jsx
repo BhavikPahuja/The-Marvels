@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchVaultEntries, decryptPayload } from "../utils/vaultCrypto";
+import {
+  fetchVaultEntries,
+  decryptPayload,
+  fetchHoneypotStatus,
+} from "../utils/vaultCrypto";
 import { getMasterKey } from "../utils/sessionSecrets";
 import Sidebar from "../components/Sidebar";
 import StatusBar from "../components/StatusBar";
+import AnimatedNumber from "../components/AnimatedNumber";
+import RevealText from "../components/RevealText";
+import useAnimatedNumber from "../hooks/useAnimatedNumber";
 import "./MyVault.css";
 
 // Icons mapped by category for visual variety
@@ -18,6 +25,48 @@ const categoryIcons = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HONEYPOT_ALERT_POLL_MS = 20000;
+const DASHBOARD_READ_ALERTS_KEY = "sv_dashboard_read_honeypot_alert_ids";
+const MAX_DASHBOARD_READ_ALERTS = 250;
+
+function toEpoch(timestamp) {
+  if (!timestamp) return 0;
+  const value = new Date(timestamp).getTime();
+  return Number.isNaN(value) ? 0 : value;
+}
+
+function loadDashboardReadAlertIds() {
+  try {
+    const raw = sessionStorage.getItem(DASHBOARD_READ_ALERTS_KEY);
+    if (!raw) {
+      return new Set();
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return new Set();
+    }
+
+    return new Set(parsed.map((value) => String(value)));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDashboardReadAlertIds(readIds) {
+  const compact = [...readIds].slice(-MAX_DASHBOARD_READ_ALERTS);
+  sessionStorage.setItem(DASHBOARD_READ_ALERTS_KEY, JSON.stringify(compact));
+}
+
+function formatHoneypotAlertDetail(alert) {
+  const provider = alert.provider ? ` (${alert.provider})` : "";
+  const ipPart = alert.triggered_ip ? ` from ${alert.triggered_ip}` : "";
+  const timePart = alert.triggered_at
+    ? ` at ${new Date(alert.triggered_at).toLocaleString()}`
+    : "";
+
+  return `${alert.category}${provider} was triggered${ipPart}${timePart}.`;
+}
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -102,6 +151,7 @@ export default function MyVault() {
   const [searchQuery, setSearchQuery] = useState("");
   const [notifOpen, setNotifOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [honeypotAlerts, setHoneypotAlerts] = useState([]);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -110,6 +160,48 @@ export default function MyVault() {
       return;
     }
     loadVault();
+  }, []);
+
+  useEffect(() => {
+    if (!sessionStorage.getItem("sv_access_token")) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadAlerts = async () => {
+      try {
+        const payload = await fetchHoneypotStatus();
+        const entries = Array.isArray(payload?.alerts?.entries)
+          ? payload.alerts.entries
+          : [];
+        const readIds = loadDashboardReadAlertIds();
+
+        const filteredAlerts = entries
+          .map((entry) => ({
+            id: String(entry?.id || ""),
+            category: String(entry?.category || "Unknown"),
+            provider: String(entry?.provider || ""),
+            triggered_at: entry?.triggered_at || null,
+            triggered_ip: entry?.triggered_ip || null,
+          }))
+          .filter((entry) => entry.id && !readIds.has(entry.id));
+
+        if (!cancelled) {
+          setHoneypotAlerts(filteredAlerts);
+        }
+      } catch {
+        // Ignore temporary API failures to keep dashboard usable.
+      }
+    };
+
+    loadAlerts();
+    const intervalId = window.setInterval(loadAlerts, HONEYPOT_ALERT_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   async function loadVault() {
@@ -182,21 +274,35 @@ export default function MyVault() {
   }, [searchQuery, vaultItems]);
 
   const notifications = useMemo(() => {
-    return [...vaultItems]
+    const vaultNotifications = [...vaultItems]
       .sort(
         (a, b) =>
           new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
       )
       .slice(0, 8)
       .map((item) => ({
-        id: item.id,
+        id: String(item.id),
+        type: "vault",
+        targetId: item.id,
         label: item.label,
         timestamp: item.updated_at || item.created_at,
         detail: item.decryptError
           ? "Locked item detected and cannot be decrypted with this local key."
           : "Credential encrypted and available in your vault.",
       }));
-  }, [vaultItems]);
+
+    const alertNotifications = honeypotAlerts.map((alert) => ({
+      id: alert.id,
+      type: "alert",
+      label: `Honeypot Alert: ${alert.category}`,
+      timestamp: alert.triggered_at,
+      detail: formatHoneypotAlertDetail(alert),
+    }));
+
+    return [...alertNotifications, ...vaultNotifications]
+      .sort((a, b) => toEpoch(b.timestamp) - toEpoch(a.timestamp))
+      .slice(0, 12);
+  }, [vaultItems, honeypotAlerts]);
 
   useEffect(() => {
     const seenAt = Number(
@@ -221,10 +327,120 @@ export default function MyVault() {
     });
   };
 
+  const handleMarkAlertRead = (alertId) => {
+    const normalizedId = String(alertId || "");
+    if (!normalizedId) {
+      return;
+    }
+
+    setHoneypotAlerts((prev) =>
+      prev.filter((alert) => alert.id !== normalizedId),
+    );
+
+    const readIds = loadDashboardReadAlertIds();
+    readIds.add(normalizedId);
+    saveDashboardReadAlertIds(readIds);
+  };
+
   const healthScore = useMemo(
     () => computeVaultHealth(vaultItems),
     [vaultItems],
   );
+
+  const vaultInsights = useMemo(() => {
+    const total = vaultItems.length;
+    const decryptedItems = vaultItems.filter((item) => !item.decryptError);
+    const lockedCount = total - decryptedItems.length;
+
+    const weakCount = decryptedItems.filter(
+      (item) => getPasswordStrength(item.password || "") < 60,
+    ).length;
+
+    const updatedInLastWeek = vaultItems.filter((item) => {
+      const time = toEpoch(item.updated_at || item.created_at);
+      return time > 0 && Date.now() - time <= 7 * DAY_MS;
+    }).length;
+
+    const categoryMap = vaultItems.reduce((acc, item) => {
+      const category = item.category || "Other";
+      acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    }, {});
+
+    const categoryPulse = Object.entries(categoryMap)
+      .map(([name, count]) => ({
+        name,
+        count,
+        share: total > 0 ? Math.round((count / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const actionQueue = [];
+
+    if (lockedCount > 0) {
+      actionQueue.push(
+        "Investigate locked entries and re-authenticate local master key.",
+      );
+    }
+
+    if (weakCount > 0) {
+      actionQueue.push(
+        "Strengthen weak credentials to raise your vault resilience score.",
+      );
+    }
+
+    if (
+      total > 0 &&
+      updatedInLastWeek < Math.max(1, Math.round(total * 0.35))
+    ) {
+      actionQueue.push(
+        "Rotate stale secrets this week to reduce long-tail exposure.",
+      );
+    }
+
+    if (!actionQueue.length) {
+      actionQueue.push(
+        "Defense posture is healthy. Keep weekly scans and regular key rotation active.",
+      );
+    }
+
+    return {
+      total,
+      decryptedCount: decryptedItems.length,
+      lockedCount,
+      weakCount,
+      updatedInLastWeek,
+      categoryPulse,
+      actionQueue,
+    };
+  }, [vaultItems]);
+
+  const animatedHealthScore = useAnimatedNumber(healthScore, {
+    duration: 1100,
+    enabled: !loading,
+    startValue: 0,
+  });
+
+  const animatedFilteredCount = useAnimatedNumber(filteredItems.length, {
+    duration: 850,
+    enabled: !loading,
+    startValue: 0,
+  });
+
+  const animatedTotalCount = useAnimatedNumber(vaultItems.length, {
+    duration: 950,
+    enabled: !loading,
+    startValue: 0,
+  });
+
+  const animatedUnreadCount = useAnimatedNumber(unreadCount, {
+    duration: 650,
+    enabled: true,
+    startValue: 0,
+  });
+
+  const unreadBadgeValue = Math.min(Math.round(animatedUnreadCount), 9);
 
   return (
     <div className="app-layout">
@@ -233,10 +449,20 @@ export default function MyVault() {
         {/* Header */}
         <header className="vault__header">
           <div>
-            <h2 className="vault__page-title">Dashboard</h2>
-            <p className="text-muted vault__page-sub">
-              Welcome back, {currentUser}
-            </p>
+            <RevealText
+              as="h2"
+              className="vault__page-title"
+              text="Dashboard"
+              msPerChar={42}
+              initialDelay={80}
+            />
+            <RevealText
+              as="p"
+              className="text-muted vault__page-sub"
+              text={`Welcome back, ${currentUser}`}
+              msPerChar={16}
+              initialDelay={180}
+            />
           </div>
           <div className="vault__header-actions">
             <button
@@ -256,9 +482,7 @@ export default function MyVault() {
             >
               <span className="icon">notifications</span>
               {unreadCount > 0 && (
-                <span className="vault__notif-count">
-                  {Math.min(unreadCount, 9)}
-                </span>
+                <span className="vault__notif-count">{unreadBadgeValue}</span>
               )}
             </button>
           </div>
@@ -301,29 +525,57 @@ export default function MyVault() {
 
             {notifications.length === 0 ? (
               <p className="text-muted" style={{ fontSize: "0.82rem" }}>
-                No notification events yet. Add your first credential to
-                generate activity.
+                No vault events or alerts yet.
               </p>
             ) : (
               <div className="vault__notif-list">
-                {notifications.map((note) => (
-                  <button
-                    key={note.id}
-                    className="vault__notif-item"
-                    onClick={() => {
-                      setNotifOpen(false);
-                      navigate(`/vault/${note.id}`);
-                    }}
-                  >
-                    <div>
-                      <strong>{note.label}</strong>
-                      <p className="text-muted">{note.detail}</p>
+                {notifications.map((note) =>
+                  note.type === "alert" ? (
+                    <div
+                      key={`alert-${note.id}`}
+                      className="vault__notif-item vault__notif-item--alert"
+                    >
+                      <div>
+                        <div className="vault__notif-label-row">
+                          <strong>{note.label}</strong>
+                          <span className="badge badge--red vault__notif-alert-badge">
+                            Alert
+                          </span>
+                        </div>
+                        <p className="text-muted">{note.detail}</p>
+                      </div>
+                      <div className="vault__notif-actions">
+                        <span className="text-muted vault__notif-time">
+                          {formatRelativeTime(note.timestamp)}
+                        </span>
+                        <button
+                          type="button"
+                          className="vault__notif-mark-read"
+                          onClick={() => handleMarkAlertRead(note.id)}
+                        >
+                          Mark as read
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-muted vault__notif-time">
-                      {formatRelativeTime(note.timestamp)}
-                    </span>
-                  </button>
-                ))}
+                  ) : (
+                    <button
+                      key={`vault-${note.id}`}
+                      className="vault__notif-item"
+                      onClick={() => {
+                        setNotifOpen(false);
+                        navigate(`/vault/${note.targetId}`);
+                      }}
+                    >
+                      <div>
+                        <strong>{note.label}</strong>
+                        <p className="text-muted">{note.detail}</p>
+                      </div>
+                      <span className="text-muted vault__notif-time">
+                        {formatRelativeTime(note.timestamp)}
+                      </span>
+                    </button>
+                  ),
+                )}
               </div>
             )}
           </div>
@@ -358,10 +610,20 @@ export default function MyVault() {
             <div className="vault__health-top">
               <span className="icon icon-lg text-green">shield</span>
               <span className="vault__health-score text-green">
-                {healthScore}%
+                <AnimatedNumber
+                  target={healthScore}
+                  duration={1100}
+                  enabled={!loading}
+                  suffix="%"
+                />
               </span>
             </div>
-            <h4>Security Health</h4>
+            <RevealText
+              as="h4"
+              text="Security Health"
+              msPerChar={24}
+              initialDelay={220}
+            />
             <p className="text-muted" style={{ fontSize: "0.82rem" }}>
               {vaultItems.length === 0
                 ? "Add your first credential to start protecting your data."
@@ -374,7 +636,7 @@ export default function MyVault() {
             <div className="progress-bar" style={{ marginTop: "12px" }}>
               <div
                 className="progress-bar__fill"
-                style={{ width: `${healthScore}%` }}
+                style={{ width: `${Math.round(animatedHealthScore)}%` }}
               ></div>
             </div>
           </div>
@@ -394,22 +656,153 @@ export default function MyVault() {
             <div className="vault__add-icon">
               <span className="icon icon-xl">add</span>
             </div>
-            <h4>Add New Item</h4>
+            <RevealText
+              as="h4"
+              text="Add New Item"
+              msPerChar={24}
+              initialDelay={260}
+            />
             <p className="text-muted" style={{ fontSize: "0.82rem" }}>
               Securely store a new credential
             </p>
           </div>
         </div>
 
+        <div className="vault__intel-grid">
+          <section className="card vault__intel-card vault__intel-card--span vault__intel-card--snapshot">
+            <div className="vault__intel-head">
+              <RevealText
+                as="h4"
+                text="Live Vault Snapshot"
+                msPerChar={20}
+                initialDelay={180}
+              />
+              <span className="badge badge--green vault__snapshot-badge">
+                <AnimatedNumber
+                  target={vaultInsights.updatedInLastWeek}
+                  duration={900}
+                  enabled={!loading}
+                />{" "}
+                Updated 7d
+              </span>
+            </div>
+
+            <div className="vault__intel-metrics">
+              <article className="vault__intel-metric">
+                <strong>
+                  <AnimatedNumber
+                    target={vaultInsights.decryptedCount}
+                    duration={900}
+                    enabled={!loading}
+                  />
+                </strong>
+                <span className="text-muted">Decrypted Entries</span>
+              </article>
+
+              <article className="vault__intel-metric">
+                <strong>
+                  <AnimatedNumber
+                    target={vaultInsights.lockedCount}
+                    duration={900}
+                    enabled={!loading}
+                  />
+                </strong>
+                <span className="text-muted">Locked Entries</span>
+              </article>
+
+              <article className="vault__intel-metric">
+                <strong>
+                  <AnimatedNumber
+                    target={vaultInsights.weakCount}
+                    duration={900}
+                    enabled={!loading}
+                  />
+                </strong>
+                <span className="text-muted">Weak Credentials</span>
+              </article>
+
+              <article className="vault__intel-metric">
+                <strong>
+                  <AnimatedNumber
+                    target={vaultInsights.updatedInLastWeek}
+                    duration={900}
+                    enabled={!loading}
+                  />
+                </strong>
+                <span className="text-muted">Updated This Week</span>
+              </article>
+            </div>
+          </section>
+
+          <section className="card vault__intel-card">
+            <RevealText
+              as="h4"
+              text="Category"
+              msPerChar={20}
+              initialDelay={220}
+            />
+
+            {vaultInsights.categoryPulse.length === 0 ? (
+              <p className="text-muted vault__intel-empty">
+                Add credentials to unlock category intelligence.
+              </p>
+            ) : (
+              <div className="vault__category-list">
+                {vaultInsights.categoryPulse.map((entry) => (
+                  <div key={entry.name} className="vault__category-row">
+                    <div className="vault__category-label">
+                      <span className="icon icon-sm">
+                        {categoryIcons[entry.name] || "key"}
+                      </span>
+                      <span>{entry.name}</span>
+                    </div>
+                    <div className="vault__category-metrics">
+                      <span className="mono">{entry.share}%</span>
+                      <div className="vault__category-track">
+                        <div
+                          className="vault__category-fill"
+                          style={{ width: `${entry.share}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="card vault__intel-card">
+            <RevealText
+              as="h4"
+              text="Action Queue"
+              msPerChar={20}
+              initialDelay={240}
+            />
+            <ul className="vault__action-list">
+              {vaultInsights.actionQueue.map((action) => (
+                <li key={action}>
+                  <span className="icon icon-sm">task_alt</span>
+                  <span>{action}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+
         {/* Vault Items */}
         <div className="vault__section-header">
-          <h3>Your Items</h3>
+          <RevealText
+            as="h3"
+            text="Your Items"
+            msPerChar={28}
+            initialDelay={280}
+          />
           <span className="badge badge--green">
             {loading
               ? "..."
               : searchQuery.trim()
-                ? `${filteredItems.length}/${vaultItems.length} Shown`
-                : `${vaultItems.length} Protected`}
+                ? `${Math.round(animatedFilteredCount)}/${Math.round(animatedTotalCount)} Shown`
+                : `${Math.round(animatedTotalCount)} Protected`}
           </span>
         </div>
 
@@ -509,7 +902,12 @@ export default function MyVault() {
           <div className="vault__banner-left">
             <span className="icon text-green">lock</span>
             <div>
-              <h4>Zero-Knowledge Active</h4>
+              <RevealText
+                as="h4"
+                text="Zero-Knowledge Active"
+                msPerChar={16}
+                initialDelay={120}
+              />
               <p className="text-muted" style={{ fontSize: "0.82rem" }}>
                 All data is encrypted client-side. The server stores only
                 ciphertext.

@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import StatusBar from "../components/StatusBar";
 import { decryptPayload, fetchVaultEntries } from "../utils/vaultCrypto";
 import { getMasterKey } from "../utils/sessionSecrets";
+import AnimatedNumber from "../components/AnimatedNumber";
+import RevealText from "../components/RevealText";
+import useAnimatedNumber from "../hooks/useAnimatedNumber";
 import "./SecurityHealth.css";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -249,8 +252,92 @@ export default function SecurityHealth() {
     }
   }
 
+  const animatedHealthScore = useAnimatedNumber(healthScore, {
+    duration: 1200,
+    enabled: !loading,
+    startValue: 0,
+  });
+
+  const animatedDecryptedCount = useAnimatedNumber(counts.decrypted, {
+    duration: 900,
+    enabled: !loading,
+    startValue: 0,
+  });
+
+  const animatedLockedCount = useAnimatedNumber(counts.locked, {
+    duration: 900,
+    enabled: !loading,
+    startValue: 0,
+  });
+
+  const animatedTotalCount = useAnimatedNumber(counts.total, {
+    duration: 950,
+    enabled: !loading,
+    startValue: 0,
+  });
+
+  const animatedEventsCount = useAnimatedNumber(events.length, {
+    duration: 800,
+    enabled: !loading,
+    startValue: 0,
+  });
+
+  const warningEventsCount = useMemo(
+    () => events.filter((event) => event.type === "warning").length,
+    [events],
+  );
+
+  const averageDefense = useMemo(() => {
+    if (!defenseBars.length) return 0;
+    return Math.round(
+      defenseBars.reduce((sum, item) => sum + item.value, 0) /
+        defenseBars.length,
+    );
+  }, [defenseBars]);
+
+  const coveragePct = counts.total
+    ? Math.round((counts.decrypted / counts.total) * 100)
+    : 0;
+
+  const actionInsights = useMemo(() => {
+    const items = [];
+
+    if (counts.locked > 0) {
+      items.push(
+        "Resolve locked credentials to restore full local decryption coverage.",
+      );
+    }
+
+    if (averageDefense < 75) {
+      items.push("Increase key hygiene by rotating weak or reused passwords.");
+    }
+
+    if (latencyMs > 250) {
+      items.push("Backend scan latency is elevated. Re-check API stability.");
+    }
+
+    if (warningEventsCount > 1) {
+      items.push(
+        "Multiple warning events detected. Review recent vault operations.",
+      );
+    }
+
+    const hasUrgent = items.length > 0;
+    if (!hasUrgent) {
+      items.push(
+        "No urgent action required. Continue routine weekly security scans.",
+      );
+    }
+
+    return {
+      items: items.slice(0, 4),
+      hasUrgent,
+    };
+  }, [averageDefense, counts.locked, latencyMs, warningEventsCount]);
+
   const circumference = 2 * Math.PI * 90;
-  const dashOffset = circumference - (healthScore / 100) * circumference;
+  const dashOffset =
+    circumference - (animatedHealthScore / 100) * circumference;
   const connectionStrong = latencyMs > 0 && latencyMs <= 250;
 
   const statusHeading = loading
@@ -267,10 +354,19 @@ export default function SecurityHealth() {
       <main className="main-content health-page animate-in">
         <header className="health__header">
           <div>
-            <h2>Security Health</h2>
-            <p className="text-muted" style={{ fontSize: "0.85rem" }}>
-              Live vault defense status from backend scan telemetry.
-            </p>
+            <RevealText
+              as="h2"
+              text="Security Health"
+              msPerChar={40}
+              initialDelay={90}
+            />
+            <RevealText
+              as="p"
+              className="text-muted"
+              text="Live vault defense status from backend scan telemetry."
+              msPerChar={12}
+              initialDelay={200}
+            />
           </div>
           <button
             className="btn btn-secondary btn-sm"
@@ -332,7 +428,16 @@ export default function SecurityHealth() {
               </svg>
               <div className="health__gauge-center">
                 <span className="health__gauge-value">
-                  {loading ? "..." : `${healthScore}%`}
+                  {loading ? (
+                    "..."
+                  ) : (
+                    <AnimatedNumber
+                      target={healthScore}
+                      duration={1200}
+                      enabled={!loading}
+                      suffix="%"
+                    />
+                  )}
                 </span>
                 <span className="health__gauge-label">Protected</span>
               </div>
@@ -348,10 +453,16 @@ export default function SecurityHealth() {
                     : "warning"}
               </span>
               <div>
-                <h3>{statusHeading}</h3>
+                <RevealText
+                  as="h3"
+                  text={statusHeading}
+                  msPerChar={14}
+                  initialDelay={100}
+                />
                 <p className="text-muted" style={{ fontSize: "0.85rem" }}>
-                  {counts.decrypted} decrypted, {counts.locked} locked,{" "}
-                  {counts.total} total records.
+                  {Math.round(animatedDecryptedCount)} decrypted,{" "}
+                  {Math.round(animatedLockedCount)} locked,{" "}
+                  {Math.round(animatedTotalCount)} total records.
                   {lastScanAt
                     ? ` Last scan ${formatRelativeTime(lastScanAt)}.`
                     : ""}
@@ -371,7 +482,12 @@ export default function SecurityHealth() {
                 {healthScore >= 70 ? "Active" : "Needs Review"}
               </span>
             </div>
-            <h4>Automated Defense</h4>
+            <RevealText
+              as="h4"
+              text="Automated Defense"
+              msPerChar={18}
+              initialDelay={130}
+            />
             <p
               className="text-muted"
               style={{ fontSize: "0.82rem", marginTop: "8px" }}
@@ -385,7 +501,16 @@ export default function SecurityHealth() {
                   <div className="health__defense-label">
                     <span>{item.label}</span>
                     <span className="text-green mono">
-                      {loading ? "..." : `${item.value}%`}
+                      {loading ? (
+                        "..."
+                      ) : (
+                        <AnimatedNumber
+                          target={item.value}
+                          duration={950}
+                          enabled={!loading}
+                          suffix="%"
+                        />
+                      )}
                     </span>
                   </div>
                   <div className="progress-bar">
@@ -412,7 +537,12 @@ export default function SecurityHealth() {
                     : "Degraded"}
               </span>
             </div>
-            <h4>Connection Quality</h4>
+            <RevealText
+              as="h4"
+              text="Connection Quality"
+              msPerChar={18}
+              initialDelay={160}
+            />
             <p
               className="text-muted"
               style={{ fontSize: "0.82rem", marginTop: "8px" }}
@@ -439,7 +569,16 @@ export default function SecurityHealth() {
                     LATENCY
                   </span>
                   <span className="mono text-green">
-                    {loading ? "..." : `${latencyMs}ms`}
+                    {loading ? (
+                      "..."
+                    ) : (
+                      <AnimatedNumber
+                        target={latencyMs}
+                        duration={900}
+                        enabled={!loading}
+                        suffix="ms"
+                      />
+                    )}
                   </span>
                 </div>
                 <div>
@@ -447,7 +586,17 @@ export default function SecurityHealth() {
                     UPTIME
                   </span>
                   <span className="mono text-green">
-                    {loading ? "..." : `${uptimePct}%`}
+                    {loading ? (
+                      "..."
+                    ) : (
+                      <AnimatedNumber
+                        target={Number(uptimePct)}
+                        decimals={1}
+                        duration={1200}
+                        enabled={!loading}
+                        suffix="%"
+                      />
+                    )}
                   </span>
                 </div>
               </div>
@@ -455,11 +604,102 @@ export default function SecurityHealth() {
           </div>
         </div>
 
+        <div className="health__intel-grid">
+          <section className="card health__intel-card">
+            <div className="health__card-top">
+              <span className="icon text-blue">radar</span>
+              <span className="badge badge--blue">Realtime</span>
+            </div>
+            <RevealText
+              as="h4"
+              text="Threat Snapshot"
+              msPerChar={18}
+              initialDelay={190}
+            />
+            <div className="health__intel-metrics">
+              <div className="health__intel-metric">
+                <span className="text-muted">Defense Avg</span>
+                <strong className="mono text-green">
+                  {loading ? (
+                    "..."
+                  ) : (
+                    <AnimatedNumber
+                      target={averageDefense}
+                      duration={900}
+                      enabled={!loading}
+                      suffix="%"
+                    />
+                  )}
+                </strong>
+              </div>
+              <div className="health__intel-metric">
+                <span className="text-muted">Warning Events</span>
+                <strong className="mono text-error">
+                  {loading ? (
+                    "..."
+                  ) : (
+                    <AnimatedNumber
+                      target={warningEventsCount}
+                      duration={800}
+                      enabled={!loading}
+                    />
+                  )}
+                </strong>
+              </div>
+              <div className="health__intel-metric">
+                <span className="text-muted">Coverage</span>
+                <strong className="mono text-blue">
+                  {loading ? (
+                    "..."
+                  ) : (
+                    <AnimatedNumber
+                      target={coveragePct}
+                      duration={900}
+                      enabled={!loading}
+                      suffix="%"
+                    />
+                  )}
+                </strong>
+              </div>
+            </div>
+          </section>
+
+          <section className="card health__intel-card">
+            <div className="health__card-top">
+              <span className="icon text-green">playlist_add_check</span>
+              <span
+                className={`badge ${actionInsights.hasUrgent ? "badge--red" : "badge--green"}`}
+              >
+                {actionInsights.hasUrgent ? "Priority" : "Stable"}
+              </span>
+            </div>
+            <RevealText
+              as="h4"
+              text="Priority Queue"
+              msPerChar={18}
+              initialDelay={220}
+            />
+            <ul className="health__action-list">
+              {actionInsights.items.map((item) => (
+                <li key={item}>
+                  <span className="icon icon-sm">task_alt</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+
         <div className="health__events">
           <div className="vault__section-header">
-            <h3>Recent Protection Events</h3>
+            <RevealText
+              as="h3"
+              text="Recent Protection Events"
+              msPerChar={22}
+              initialDelay={220}
+            />
             <span className="badge badge--green">
-              {loading ? "..." : `${events.length} Events`}
+              {loading ? "..." : `${Math.round(animatedEventsCount)} Events`}
             </span>
           </div>
 
@@ -487,7 +727,13 @@ export default function SecurityHealth() {
                     <span className="icon">{event.icon}</span>
                   </div>
                   <div className="health__event-content">
-                    <h4 className="health__event-title">{event.title}</h4>
+                    <RevealText
+                      as="h4"
+                      className="health__event-title"
+                      text={event.title}
+                      msPerChar={10}
+                      initialDelay={i * 60}
+                    />
                     <p className="text-muted" style={{ fontSize: "0.82rem" }}>
                       {event.detail}
                     </p>
@@ -505,7 +751,12 @@ export default function SecurityHealth() {
           <div className="health__audit-left">
             <span className="icon icon-lg text-blue">search</span>
             <div>
-              <h4>Deep Security Audit</h4>
+              <RevealText
+                as="h4"
+                text="Deep Security Audit"
+                msPerChar={18}
+                initialDelay={120}
+              />
               <p className="text-muted" style={{ fontSize: "0.85rem" }}>
                 Run another full scan over the backend vault feed and refresh
                 all risk signals.

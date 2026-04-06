@@ -115,6 +115,56 @@
   animation: fadeIn 420ms var(--motion-emphasis) 140ms both;
 }
 
+.health__intel-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.health__intel-card {
+  background: var(--surface-container);
+  animation: riseIn 360ms var(--motion-emphasis) both;
+}
+
+.health__intel-metrics {
+  margin-top: var(--space-lg);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.health__intel-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface-lowest);
+  border: var(--ghost-border);
+  padding: 12px;
+}
+
+.health__intel-metric strong {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.health__action-list {
+  margin-top: var(--space-lg);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.health__action-list li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 0.8rem;
+  color: var(--on-surface-variant);
+}
+
 .health__card-top {
   display: flex;
   justify-content: space-between;
@@ -369,7 +419,19 @@
   .health__cards-row {
     grid-template-columns: 1fr;
   }
+  .health__intel-grid {
+    grid-template-columns: 1fr;
+  }
+  .health__intel-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .health__event {
     flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .health__intel-metrics {
+    grid-template-columns: 1fr;
   }
 }
