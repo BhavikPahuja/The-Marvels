@@ -924,9 +924,9 @@ if __name__ == "__main__":
 
         if args.validate:
             report = validate_honeypot_bundle(bundle)
-            print(f"\n  Validation: {'✅ PASSED' if report['valid'] else '❌ FAILED'}")
+            print(f"\n  Validation: {' PASSED' if report['valid'] else ' FAILED'}")
             for cat, info in report["checks"].items():
-                status = "✅" if info.get("valid") else "❌"
+                status = "true" if info.get("valid") else "false"
                 count = info.get("count", "-")
                 print(f"    {status} {cat}: {count}")
             print()
@@ -934,10 +934,10 @@ if __name__ == "__main__":
     elif args.command == "check-ollama":
         client = OllamaClient()
         if client.is_available():
-            print(f"✅ Ollama is reachable at {OLLAMA_BASE_URL}")
+            print(f" Ollama is reachable at {OLLAMA_BASE_URL}")
             print(f"   Default model: {OLLAMA_MODEL}")
         else:
-            print(f"❌ Ollama is NOT reachable at {OLLAMA_BASE_URL}")
+            print(f" Ollama is NOT reachable at {OLLAMA_BASE_URL}")
             print("   The fallback generator will be used instead.")
             sys.exit(1)
 
