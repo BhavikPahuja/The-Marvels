@@ -164,6 +164,16 @@
   gap: 2px;
 }
 
+.health__empty-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--surface-container);
+  border: var(--ghost-border);
+  font-size: 0.82rem;
+}
+
 .health__event {
   display: flex;
   align-items: center;

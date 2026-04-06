@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import './Sidebar.css'
 
 const navItems = [
@@ -8,7 +8,16 @@ const navItems = [
 ]
 
 export default function Sidebar() {
-  const location = useLocation()
+  const navigate = useNavigate()
+  const currentUser = sessionStorage.getItem('sv_username') || 'Operator'
+  const initials = currentUser.slice(0, 2).toUpperCase()
+
+  const handleLockAll = () => {
+    sessionStorage.removeItem('sv_master_key')
+    sessionStorage.removeItem('sv_access_token')
+    sessionStorage.removeItem('sv_refresh_token')
+    navigate('/')
+  }
 
   return (
     <aside className="sidebar">
@@ -35,14 +44,14 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar__footer">
-        <button className="sidebar__lock-btn">
+        <button className="sidebar__lock-btn" onClick={handleLockAll}>
           <span className="icon icon-sm">lock</span>
           <span>Lock All Items</span>
         </button>
         <div className="sidebar__user">
-          <div className="sidebar__avatar">SV</div>
+          <div className="sidebar__avatar">{initials || 'SV'}</div>
           <div className="sidebar__user-info">
-            <span className="sidebar__user-name">Operator</span>
+            <span className="sidebar__user-name">{currentUser}</span>
             <span className="sidebar__user-role">Admin Access</span>
           </div>
         </div>

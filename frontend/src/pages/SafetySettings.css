@@ -1,0 +1,86 @@
+.settings-page {
+  padding-bottom: 80px;
+}
+
+.settings__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+}
+
+.settings__grid {
+  display: grid;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-3xl);
+}
+
+.settings__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.85rem;
+  color: var(--on-surface-variant);
+}
+
+.settings__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) 0;
+  border-bottom: var(--ghost-border);
+  gap: var(--space-md);
+}
+
+.settings__row:last-child {
+  border-bottom: none;
+}
+
+.settings__toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) 0;
+  border-bottom: var(--ghost-border);
+}
+
+.settings__toggle-row:last-child {
+  border-bottom: none;
+}
+
+.settings__toggle-row span {
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.settings__toggle-row p {
+  font-size: 0.78rem;
+  margin-top: 2px;
+}
+
+.settings__toggle-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary-container);
+}
+
+.settings__danger {
+  border-color: rgba(255, 180, 171, 0.25);
+}
+
+@media (max-width: 768px) {
+  .settings__header {
+    flex-direction: column;
+  }
+
+  .settings__row,
+  .settings__toggle-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

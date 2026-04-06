@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Frontend WebCrypto Phase 1 Test</title>
+  <style>
+    body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
+    .success { color: #0f0; }
+    .error { color: #f00; }
+    .info { color: #0af; }
+    #log { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>Zero-Knowledge Phase 1 E2E Test</h2>
+  <div id="log">Initializing...<br></div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    function log(msg, type='info') {
+      logEl.innerHTML += `<span class="${type}">[${new Date().toISOString()}] ${msg}</span><br>`;
+      console.log(msg);
+    }
+
+    const API_BASE = 'http://127.0.0.1:8000/api';
+    const TEST_CREDS = {
+      username: 'test_crypto_' + Date.now(),
+      email: `test_${Date.now()}@test.com`,
+      password: 'StrongMasterPassword123!'
+    };
+    const SECRET_PAYLOAD = {
+      username: "my_bank_login",
+      password: "super_secret_bank_password",
+      notes: "Do not share"
+    };
+
+    let jwtToken = null;
+
+    // --- Web Crypto API Vectors ---
+    // Helper to encode/decode
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+
+    // 1. Derive AES-KG Key from Master Password using PBKDF2
+    async function deriveKey(password, saltUint8) {
+      log('Deriving AES-GCM key via PBKDF2...', 'info');
+      const baseKey = await crypto.subtle.importKey(
+        'raw', enc.encode(password), { name: 'PBKDF2' }, false, ['deriveKey']
+      );
+
+      return await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: saltUint8,
+          iterations: 100000,
+          hash: 'SHA-256'
+        },
+        baseKey,
+        { name: 'AES-GCM', length: 256 },
+        true,
+        ['encrypt', 'decrypt']
+      );
+    }
+
+    // ArrayBuffer to Base64 (needed for Django API)
+    function buf2Base64(buffer) {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
+    // Base64 to Uint8Array
+    function base64ToBuf(b64) {
+      const binary_string = atob(b64);
+      const len = binary_string.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary_string.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    async function runTest() {
+      try {
+        // 1. Register
+        log(`Registering user: ${TEST_CREDS.username}`);
+        const regRes = await fetch(`${API_BASE}/auth/register/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(TEST_CREDS)
+        });
+        if (!regRes.ok) throw new Error(await regRes.text());
+        log('Registration success', 'success');
+
+        // 2. Login
+        log(`Logging in to get JWT`);
+        const loginRes = await fetch(`${API_BASE}/auth/token/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: TEST_CREDS.username, password: TEST_CREDS.password })
+        });
+        if (!loginRes.ok) throw new Error(await loginRes.text());
+        const loginData = await loginRes.json();
+        jwtToken = loginData.access;
+        log('Login success - got JWT', 'success');
+
+        // 3. Encrypt Data locally
+        log('Generating Salt and IV...');
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        
+        const key = await deriveKey(TEST_CREDS.password, salt);
+        log('Key derived. Encrypting payload...');
+
+        const plaintextStr = JSON.stringify(SECRET_PAYLOAD);
+        const ciphertextBuf = await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv: iv },
+          key,
+          enc.encode(plaintextStr)
+        );
+
+        const ciphertextB64 = buf2Base64(ciphertextBuf);
+        const ivB64 = buf2Base64(iv);
+        const saltB64 = buf2Base64(salt);
+
+        log(`Encrypted blob: ${ciphertextB64.substring(0,20)}...`);
+
+        // 4. Send to Django
+        log('Sending Ciphertext to Django (Zero-Knowledge)...');
+        const storeRes = await fetch(`${API_BASE}/vault/store/`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwtToken}`
+          },
+          body: JSON.stringify({
+            label: "My Bank Details",
+            ciphertext: ciphertextB64,
+            iv: ivB64,
+            salt: saltB64
+          })
+        });
+        if (!storeRes.ok) throw new Error(await storeRes.text());
+        log('Item securely stored in Django database', 'success');
+
+        // 5. Fetch from Django
+        log('Fetching vault items from Django...');
+        const listRes = await fetch(`${API_BASE}/vault/`, {
+          headers: { 'Authorization': `Bearer ${jwtToken}` }
+        });
+        const items = await listRes.json();
+        const storedItem = items.results[0];
+        log(`Retrieved item [${storedItem.label}]: Cipher text present. No plaintext in DB.`, 'success');
+
+        // 6. Decrypt locally
+        log('Decrypting payload locally using Web Crypto...');
+        const fetchedSalt = base64ToBuf(storedItem.salt);
+        const fetchedIv = base64ToBuf(storedItem.iv);
+        const fetchedCipher = base64ToBuf(storedItem.ciphertext);
+
+        // Re-derive key
+        const rekey = await deriveKey(TEST_CREDS.password, fetchedSalt);
+        const decryptedBuf = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: fetchedIv },
+          rekey,
+          fetchedCipher
+        );
+
+        const decryptedStr = dec.decode(decryptedBuf);
+        const decryptedObj = JSON.parse(decryptedStr);
+        log(`Decrypted password: ${decryptedObj.password}`, 'success');
+
+        if (decryptedObj.password === SECRET_PAYLOAD.password) {
+          log('E2E TEST PASSED! ZERO KNOWLEDGE CRYPTO FLOW WORKS PERFECTLY.', 'success');
+          logEl.innerHTML += '<h1 class="success" id="test-result">All tests passed!</h1>';
+        } else {
+          throw new Error("Decrypted content mismatch!");
+        }
+
+      } catch (err) {
+        log(`ERROR: ${err.message}`, 'error');
+        console.error(err);
+      }
+    }
+
+    runTest();
+  </script>
+</body>
+</html>

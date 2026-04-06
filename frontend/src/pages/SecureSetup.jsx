@@ -1,9 +1,21 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { registerUser, loginUser } from '../utils/vaultCrypto'
 import './SecureSetup.css'
 
 export default function SecureSetup() {
+  const navigate = useNavigate()
+  const [isLogin, setIsLogin] = useState(false)
+
+  // Form fields
+  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [showPass, setShowPass] = useState(false)
+
+  // Status
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [step] = useState(2)
 
   const getStrength = () => {
@@ -17,6 +29,44 @@ export default function SecureSetup() {
 
   const strength = getStrength()
   const progressPercent = passphrase.length > 0 ? Math.min(95, 40 + passphrase.length * 3) : 0
+
+  const handleSubmit = async () => {
+    setError('')
+    setLoading(true)
+
+    try {
+      if (!isLogin) {
+        // Register first
+        if (!username.trim() || !email.trim()) {
+          throw new Error('Please fill in all fields.')
+        }
+        await registerUser(username.trim(), email.trim(), passphrase)
+      }
+
+      // Login (both flows end here)
+      const tokens = await loginUser(username.trim(), passphrase)
+
+      // Store JWT + master password in sessionStorage (never persisted to disk)
+      sessionStorage.setItem('sv_access_token', tokens.access)
+      sessionStorage.setItem('sv_refresh_token', tokens.refresh)
+      sessionStorage.setItem('sv_master_key', passphrase)
+      sessionStorage.setItem('sv_username', username.trim())
+
+      // Navigate to vault
+      navigate('/vault')
+    } catch (err) {
+      let msg = err.message
+      try {
+        const parsed = JSON.parse(msg)
+        // Extract first error from Django response
+        const firstKey = Object.keys(parsed)[0]
+        msg = Array.isArray(parsed[firstKey]) ? parsed[firstKey][0] : parsed[firstKey]
+      } catch (_) { /* use raw msg */ }
+      setError(msg)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="setup">
@@ -35,13 +85,18 @@ export default function SecureSetup() {
           </div>
 
           <h1 className="setup__title">
-            Crafting Your<br />
-            <span className="text-green">Private Sanctuary</span>
+            {isLogin ? (
+              <>Unlock Your<br /><span className="text-green">Private Sanctuary</span></>
+            ) : (
+              <>Crafting Your<br /><span className="text-green">Private Sanctuary</span></>
+            )}
           </h1>
 
           <p className="setup__subtitle">
-            We're setting up a master key that only you will ever hold.
-            This ensures your data remains invisible to everyone else, including us.
+            {isLogin
+              ? 'Enter your master credentials to decrypt and access your vault.'
+              : "We're setting up a master key that only you will ever hold. This ensures your data remains invisible to everyone else, including us."
+            }
           </p>
 
           <div className="setup__features">
@@ -70,26 +125,74 @@ export default function SecureSetup() {
         <div className="setup__card">
           <div className="setup__card-header">
             <span className="icon text-green">enhanced_encryption</span>
-            <span className="setup__card-title">Vault Configuration</span>
+            <span className="setup__card-title">
+              {isLogin ? 'Vault Unlock' : 'Vault Configuration'}
+            </span>
           </div>
 
           {/* Progress */}
-          <div className="setup__progress">
-            <div className="setup__progress-header">
-              <span className="setup__progress-label">Securing your vault</span>
-              <span className="setup__progress-value text-green">{progressPercent}%</span>
+          {!isLogin && (
+            <div className="setup__progress">
+              <div className="setup__progress-header">
+                <span className="setup__progress-label">Securing your vault</span>
+                <span className="setup__progress-value text-green">{progressPercent}%</span>
+              </div>
+              <div className="progress-bar">
+                <div
+                  className="progress-bar__fill"
+                  style={{ width: `${progressPercent}%` }}
+                ></div>
+              </div>
             </div>
-            <div className="progress-bar">
-              <div
-                className="progress-bar__fill"
-                style={{ width: `${progressPercent}%` }}
-              ></div>
+          )}
+
+          {/* Error banner */}
+          {error && (
+            <div style={{
+              padding: '10px 14px',
+              background: 'rgba(255,60,60,0.12)',
+              border: '1px solid rgba(255,60,60,0.3)',
+              borderRadius: '8px',
+              color: '#ff6b6b',
+              fontSize: '0.85rem',
+              marginBottom: '8px',
+            }}>
+              <span className="icon icon-sm" style={{ verticalAlign: 'middle', marginRight: 6 }}>error</span>
+              {error}
             </div>
+          )}
+
+          {/* Username input */}
+          <div className="input-group">
+            <label>Username</label>
+            <input
+              type="text"
+              className="input-field"
+              placeholder="Choose a username..."
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              id="input-username"
+            />
           </div>
+
+          {/* Email input — only for registration */}
+          {!isLogin && (
+            <div className="input-group">
+              <label>Email Address</label>
+              <input
+                type="email"
+                className="input-field"
+                placeholder="your@email.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                id="input-email"
+              />
+            </div>
+          )}
 
           {/* Passphrase input */}
           <div className="input-group">
-            <label>Choose Your Master Passphrase</label>
+            <label>Master Passphrase</label>
             <div className="setup__input-wrap">
               <input
                 type={showPass ? 'text' : 'password'}
@@ -97,6 +200,7 @@ export default function SecureSetup() {
                 placeholder="Enter a strong, memorable passphrase..."
                 value={passphrase}
                 onChange={e => setPassphrase(e.target.value)}
+                id="input-passphrase"
               />
               <button
                 className="setup__toggle-vis"
@@ -139,12 +243,30 @@ export default function SecureSetup() {
 
           {/* Actions */}
           <div className="setup__actions">
-            <button className="btn btn-primary setup__cta" disabled={strength.level < 2}>
-              <span className="icon icon-sm">lock</span>
-              Secure My Vault
+            <button
+              className="btn btn-primary setup__cta"
+              disabled={strength.level < 2 || loading || !username.trim()}
+              onClick={handleSubmit}
+              id="btn-submit"
+            >
+              {loading ? (
+                <>
+                  <span className="icon icon-sm" style={{ animation: 'spin 1s linear infinite' }}>sync</span>
+                  {isLogin ? 'Decrypting...' : 'Securing...'}
+                </>
+              ) : (
+                <>
+                  <span className="icon icon-sm">{isLogin ? 'lock_open' : 'lock'}</span>
+                  {isLogin ? 'Unlock My Vault' : 'Secure My Vault'}
+                </>
+              )}
             </button>
             <p className="setup__login-link text-muted">
-              Already have a vault? <a href="#">Sign in here</a>
+              {isLogin ? (
+                <>Need a vault? <a href="#" onClick={e => { e.preventDefault(); setIsLogin(false); setError('') }}>Create one here</a></>
+              ) : (
+                <>Already have a vault? <a href="#" onClick={e => { e.preventDefault(); setIsLogin(true); setError('') }}>Sign in here</a></>
+              )}
             </p>
           </div>
         </div>

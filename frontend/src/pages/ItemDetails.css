@@ -102,6 +102,11 @@
   gap: var(--space-md);
 }
 
+.details__field-row .input-field {
+  flex: 1;
+  min-width: 0;
+}
+
 .details__field-row .mono {
   font-family: var(--font-mono);
   font-size: 0.9rem;
