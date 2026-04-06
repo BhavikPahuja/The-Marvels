@@ -203,6 +203,12 @@ def _build_alert_html(
     honeypot_id = str(breach_details.get("honeypot_id", "—"))
     triggered_at = str(breach_details.get("triggered_at", "Unknown"))
     triggered_ip = str(breach_details.get("triggered_ip", "Unknown"))
+    threat_label = {
+      "CRITICAL": "Immediate response required",
+      "HIGH": "Urgent investigation required",
+      "MEDIUM": "Review and contain quickly",
+      "LOW": "Monitor and validate",
+    }.get(severity, "Potential exposure detected")
 
     severity_color = {
         "CRITICAL": "#DC2626",
@@ -219,24 +225,30 @@ def _build_alert_html(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Security Alert — Abhedya</title>
 </head>
-<body style="margin:0; padding:0; background-color:#0F172A; font-family:'Segoe UI',Roboto,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0F172A; padding:40px 20px;">
+<body style="margin:0; padding:0; background:radial-gradient(circle at top, #172554 0%, #0F172A 45%, #020617 100%); font-family:'Segoe UI',Roboto,Arial,sans-serif;">
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all;">
+    Abhedya security notice: honeypot credential triggered. Please rotate credentials immediately.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#1E293B; border-radius:16px; overflow:hidden; box-shadow:0 25px 50px rgba(0,0,0,0.5);">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#1E293B; border-radius:16px; overflow:hidden; box-shadow:0 30px 70px rgba(2,6,23,0.75);">
 
           <!-- HEADER -->
           <tr>
-            <td style="background:linear-gradient(135deg, {severity_color}, #7C3AED); padding:32px 40px; text-align:center;">
+            <td style="background:linear-gradient(135deg, {severity_color}, #2563EB 55%, #0EA5E9); padding:32px 40px; text-align:center;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="text-align:center;">
+                    <p style="margin:0 0 8px; color:rgba(255,255,255,0.92); font-size:11px; font-weight:700; letter-spacing:1.8px; text-transform:uppercase;">
+                      Abhedya Incident Response Center
+                    </p>
                     <div style="font-size:48px; margin-bottom:8px;">🚨</div>
                     <h1 style="margin:0; color:#FFFFFF; font-size:24px; font-weight:700; letter-spacing:0.5px;">
                       SECURITY BREACH DETECTED
                     </h1>
                     <p style="margin:8px 0 0; color:rgba(255,255,255,0.85); font-size:14px;">
-                      Honeypot Canary Trap Triggered
+                      Honeypot Canary Trap Triggered • {threat_label}
                     </p>
                   </td>
                 </tr>
@@ -270,6 +282,34 @@ def _build_alert_html(
                 involving your account. A decoy credential planted in our vault was found compromised,
                 which indicates unauthorized access to the database.
               </p>
+            </td>
+          </tr>
+
+          <!-- QUICK SIGNALS -->
+          <tr>
+            <td style="padding:20px 40px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="width:33.33%; padding-right:8px;">
+                    <div style="background:#0B1220; border:1px solid #1E293B; border-radius:10px; padding:12px; text-align:center;">
+                      <p style="margin:0; color:#64748B; font-size:11px; letter-spacing:1px; text-transform:uppercase;">Signal</p>
+                      <p style="margin:6px 0 0; color:#F8FAFC; font-size:13px; font-weight:700;">Honeypot Trip</p>
+                    </div>
+                  </td>
+                  <td style="width:33.33%; padding:0 4px;">
+                    <div style="background:#0B1220; border:1px solid #1E293B; border-radius:10px; padding:12px; text-align:center;">
+                      <p style="margin:0; color:#64748B; font-size:11px; letter-spacing:1px; text-transform:uppercase;">Credential</p>
+                      <p style="margin:6px 0 0; color:#F8FAFC; font-size:13px; font-weight:700;">{category}</p>
+                    </div>
+                  </td>
+                  <td style="width:33.33%; padding-left:8px;">
+                    <div style="background:#0B1220; border:1px solid #1E293B; border-radius:10px; padding:12px; text-align:center;">
+                      <p style="margin:0; color:#64748B; font-size:11px; letter-spacing:1px; text-transform:uppercase;">Provider</p>
+                      <p style="margin:6px 0 0; color:#F8FAFC; font-size:13px; font-weight:700;">{provider}</p>
+                    </div>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
