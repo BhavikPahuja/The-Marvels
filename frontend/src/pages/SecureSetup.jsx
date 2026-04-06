@@ -29,6 +29,7 @@ export default function SecureSetup() {
 
   const strength = getStrength()
   const progressPercent = passphrase.length > 0 ? Math.min(95, 40 + passphrase.length * 3) : 0
+  const isSubmitDisabled = loading || !username.trim() || (!isLogin && strength.level < 2)
 
   const handleSubmit = async () => {
     setError('')
@@ -245,7 +246,7 @@ export default function SecureSetup() {
           <div className="setup__actions">
             <button
               className="btn btn-primary setup__cta"
-              disabled={strength.level < 2 || loading || !username.trim()}
+              disabled={isSubmitDisabled}
               onClick={handleSubmit}
               id="btn-submit"
             >
